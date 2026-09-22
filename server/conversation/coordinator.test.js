@@ -98,6 +98,32 @@ describe("conversation coordination", () => {
       stage: "stt",
     });
   });
+  it("waits for ASR startup when push-to-talk is released immediately", async () => {
+    const registry = new SessionRegistry();
+    const session = registry.create(socket());
+    let resolveStart;
+    const calls = [];
+    const coordinator = new ConversationCoordinator({
+      config: { mode: "aliyun", ready: true, missing: [], maxConcurrentTurns: 4, asrFinalTimeoutMs: 1000 },
+      registry,
+      asr: { start: vi.fn(() => new Promise((resolve) => { resolveStart = resolve; })) },
+      llm: {},
+      tts: {},
+    });
+    const start = coordinator.handle(session, event(session, { type: "input.start", turnId: 1, format: "pcm_s16le", sampleRate: 16000, channels: 1 }));
+    const audio = coordinator.handle(session, event(session, { type: "input.audio", turnId: 1, sequence: 0, data: Buffer.from([1, 2]).toString("base64") }));
+    const end = coordinator.handle(session, event(session, { type: "input.end", turnId: 1 }));
+
+    resolveStart({
+      send: () => calls.push("send"),
+      finish: async () => { calls.push("finish"); return ""; },
+      cancel() {},
+    });
+    await Promise.all([start, audio, end]);
+
+    expect(calls).toEqual(["send", "finish"]);
+    expect(session.socket.sent.some((item) => item.code === "asr_not_ready")).toBe(false);
+  });
   it("retries only TTS and then resumes queued sentences", async () => {
     const registry = new SessionRegistry();
     const session = registry.create(socket());

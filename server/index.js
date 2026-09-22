@@ -53,18 +53,20 @@ export function createMiraServer({ env = process.env, providers = {} } = {}) {
   });
   const wss = new WebSocketServer({ noServer: true, maxPayload: 65536 });
   server.on("upgrade", (request, socket, head) => {
+    const requestUrl = new URL(request.url, "http://localhost");
     if (
-      request.url !== "/api/conversation" ||
+      requestUrl.pathname !== "/api/conversation" ||
       (request.headers.origin &&
         !config.allowedOrigins.has(request.headers.origin))
     )
       return socket.destroy();
     wss.handleUpgrade(request, socket, head, (ws) =>
-      wss.emit("connection", ws),
+      wss.emit("connection", ws, request),
     );
   });
-  wss.on("connection", (ws) => {
-    const session = registry.create(ws);
+  wss.on("connection", (ws, request) => {
+    const query = new URL(request.url, "http://localhost").searchParams;
+    const session = registry.resume(query.get("sessionId"), query.get("token"), ws) || registry.create(ws);
     ws.send(
       JSON.stringify({
         v: 1,
@@ -72,6 +74,7 @@ export function createMiraServer({ env = process.env, providers = {} } = {}) {
         sessionId: session.id,
         token: session.token,
         ...publicReadiness(config),
+        resumed: Boolean(query.get("sessionId")),
       }),
     );
     ws.on("message", (raw, binary) => {
@@ -92,7 +95,7 @@ export function createMiraServer({ env = process.env, providers = {} } = {}) {
         });
       Promise.resolve(coordinator.handle(session, parsed.data)).catch(() => {});
     });
-    ws.on("close", () => registry.remove(session));
+    ws.on("close", () => registry.disconnect(session));
   });
   const sweep = setInterval(
     () => registry.sweep(),

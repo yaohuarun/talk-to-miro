@@ -6,6 +6,7 @@ import {
   toDirective,
   toScenePerformance,
 } from "../narrative/directives.js";
+import { classifyVoice } from "./voice-policy.js";
 const clone = (value) => structuredClone(value);
 const fault = (stage, error, retryable = true) => ({
   type: "turn.error",
@@ -21,7 +22,7 @@ export class ConversationCoordinator {
   send(session, message) {
     if (session.socket.readyState === 1)
       session.socket.send(
-        JSON.stringify({ v: 1, sessionId: session.id, ...message }),
+        JSON.stringify({ v: 1, sessionId: session.id, eventSequence: session.eventSequence++, ...message }),
       );
   }
   valid(session, turn) {
@@ -69,16 +70,22 @@ export class ConversationCoordinator {
         turn.mockVoice = true;
         return;
       }
+      // Expose startup immediately: WebSocket callbacks are concurrent, so a
+      // short push-to-talk can deliver audio/end while ASR is still opening.
+      turn.asrReady = this.asr.start({
+        onPartial: (text) => {
+          if (!this.valid(session, turn)) return;
+          const classification = classifyVoice(text);
+          turn.lastPartial = text;
+          turn.lastClassification = classification;
+          this.send(session, { type: "transcript.partial", turnId: turn.id, text, provisional: true });
+          this.send(session, { type: "voice.classification", turnId: turn.id, ...classification });
+        },
+      });
       try {
-        turn.asr = await this.asr.start({
-          onPartial: (text) =>
-            this.valid(session, turn) &&
-            this.send(session, {
-              type: "transcript.partial",
-              turnId: turn.id,
-              text,
-            }),
-        });
+        const asr = await turn.asrReady;
+        if (!this.valid(session, turn)) return asr.cancel?.();
+        turn.asr = asr;
       } catch (error) {
         if (this.valid(session, turn))
           this.fail(session, turn, "stt", error.message);
@@ -103,21 +110,28 @@ export class ConversationCoordinator {
         );
       turn.expectedSequence += 1;
       turn.audioBytes += bytes.length;
-      if (!turn.mockVoice)
+      if (!turn.mockVoice) {
         try {
-          turn.asr?.send(bytes);
+          const asr = turn.asr || (await turn.asrReady);
+          if (!this.valid(session, turn)) return;
+          turn.asr = asr;
+          asr.send(bytes);
         } catch (error) {
-          this.fail(session, turn, "stt", error.message);
+          if (this.valid(session, turn))
+            this.fail(session, turn, "stt", error.message);
         }
+      }
       return;
     }
     if (event.type === "input.end") {
       if (turn.mockVoice)
         return this.generate(session, turn, "我想知道你为什么还在等。");
-      if (!turn.asr) return this.fail(session, turn, "stt", "asr_not_ready");
       try {
+        const asr = turn.asr || (await turn.asrReady);
+        if (!this.valid(session, turn)) return;
+        turn.asr = asr;
         const text = await Promise.race([
-          turn.asr.finish(),
+          asr.finish(),
           new Promise((_, reject) =>
             setTimeout(
               () => reject(new Error("asr_final_timeout")),
@@ -127,6 +141,13 @@ export class ConversationCoordinator {
         ]);
         if (!this.valid(session, turn)) return;
         if (!text) return this.fail(session, turn, "stt", "empty_speech");
+        const classification = classifyVoice(text, { stable: true });
+        this.send(session, { type: "voice.classification", turnId: turn.id, ...classification, stable: true });
+        if (classification.kind === "backchannel") {
+          this.send(session, { type: "transcript.final", turnId: turn.id, text, suppressed: true });
+          turn.cancel("backchannel");
+          return;
+        }
         this.send(session, { type: "transcript.final", turnId: turn.id, text });
         return this.generate(session, turn, text);
       } catch (error) {
@@ -224,11 +245,16 @@ export class ConversationCoordinator {
   }
   async speak(session, turn, segment) {
     let sequence = 0;
+    let firstPacketAt;
     try {
       const task = await this.tts.synthesize({
         text: segment.text,
         onAudio: (chunk) => {
           if (!this.valid(session, turn)) return;
+          if (!firstPacketAt) {
+            firstPacketAt = Date.now();
+            this.send(session, { type: "speech.timing", turnId: turn.id, segmentId: segment.id, stage: "first-audio-packet", elapsedMs: firstPacketAt - turn.startedAt });
+          }
           segment.chunks.push(chunk);
           this.send(session, {
             type: "audio.chunk",

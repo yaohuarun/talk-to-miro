@@ -17,4 +17,11 @@ describe('conversation drawer contract', () => {
   it('restores focus after the drawer closes', () => {
     expect(app).toContain('triggerRef.current?.focus()');
   });
+  it('renders a closed-session state with an explicit fresh-session restart', () => {
+    expect(app).toContain("event.type === 'conversation.ended'");
+    expect(app).toContain("setEnded(true)");
+    expect(app).toContain('重新开始对话');
+    expect(app).toContain('window.location.reload()');
+    expect(app).toContain('if (!text || ended) return');
+  });
 });

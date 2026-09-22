@@ -32,6 +32,8 @@ export class ParaformerAdapter {
     let finished = false;
     let resolveFinal;
     let rejectFinal;
+    let resolveStarted;
+    const startedReady = new Promise((resolve) => { resolveStarted = resolve; });
     const buffered = [];
     const transcript = new TranscriptAssembler(onPartial);
     const final = new Promise((resolve, reject) => {
@@ -47,6 +49,7 @@ export class ParaformerAdapter {
         const name = event.header?.event;
         if (name === "task-started") {
           started = true;
+          resolveStarted();
           for (const chunk of buffered.splice(0)) task.socket.send(chunk);
         }
         transcript.accept(event.payload?.output?.sentence);
@@ -57,6 +60,7 @@ export class ParaformerAdapter {
         }
         if (name === "task-failed" || name === "protocol-error") {
           finished = true;
+          resolveStarted();
           rejectFinal(new Error(event.header?.error_message || "asr_failed"));
           task.close();
         }
@@ -64,6 +68,7 @@ export class ParaformerAdapter {
       onClose: () => {
         if (!finished) {
           finished = true;
+          resolveStarted();
           rejectFinal(new Error("asr_disconnected"));
         }
       },
@@ -94,7 +99,9 @@ export class ParaformerAdapter {
             throw new Error("asr_start_buffer_full");
         }
       },
-      finish() {
+      async finish() {
+        if (!started) await startedReady;
+        if (finished) return final;
         task.sendJson({
           header: {
             action: "finish-task",

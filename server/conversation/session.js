@@ -23,8 +23,16 @@ export class SessionRegistry {
       lastActive: this.now(),
       starts: [],
       ended: false,
+      eventSequence: 0,
     };
     this.sessions.set(session.id, session);
+    return session;
+  }
+  resume(id, token, socket) {
+    const session = this.sessions.get(id);
+    if (!session || session.token !== token || session.lastActive < this.now() - this.ttlMs) return null;
+    session.socket = socket;
+    session.lastActive = this.now();
     return session;
   }
   owns(session, event) {
@@ -44,6 +52,7 @@ export class SessionRegistry {
       audioBytes: 0,
       expectedSequence: 0,
       pending: new Map(),
+      startedAt: this.now(),
       cancel(reason = "cancelled") {
         if (this.cancelled) return;
         this.cancelled = true;
@@ -64,6 +73,12 @@ export class SessionRegistry {
   remove(session) {
     session.active?.cancel("disconnect");
     this.sessions.delete(session.id);
+  }
+  disconnect(session) {
+    if (this.sessions.get(session.id) === session) {
+      session.socket = null;
+      session.lastActive = this.now();
+    }
   }
   sweep() {
     const cutoff = this.now() - this.ttlMs;

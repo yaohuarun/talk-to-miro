@@ -4,6 +4,7 @@ const base = {
   v: z.literal(1),
   sessionId: z.string().min(8),
   token: z.string().min(16),
+  resumeSequence: z.number().int().nonnegative().optional(),
 };
 const turn = { ...base, turnId: z.number().int().positive() };
 export const clientEventSchema = z.discriminatedUnion("type", [

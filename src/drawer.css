@@ -47,3 +47,10 @@
 @media (prefers-reduced-motion: reduce) { .app .conversation-drawer.bottom { animation: none; } }
 .speech-recovery { display: inline-flex; gap: 8px; margin-left: 12px; }
 .speech-recovery button { border: 1px solid rgba(238, 181, 104, .55); background: transparent; color: #f5d39b; padding: 5px 9px; }
+.scene-subtitle p .streaming-subtitle-text {
+  display: inline;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+}
