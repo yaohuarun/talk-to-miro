@@ -1,0 +1,49 @@
+/* Bottom input sheet: opening never changes the scene's layout. */
+.app.landscape:not(.immersive),
+.app.landscape:not(.immersive).drawer-open {
+  display: block;
+  max-width: none;
+  padding: 14px 20px;
+}
+.app.landscape:not(.immersive) .scene,
+.app.landscape:not(.immersive).drawer-open .scene {
+  height: calc(100dvh - 70px);
+  min-height: 300px;
+  margin-top: 8px;
+}
+.app .drawer-backdrop { z-index: 15; background: #04090b26; }
+.app .conversation-drawer.bottom {
+  bottom: var(--keyboard-inset, 0px);
+  width: min(640px, 100%);
+  min-height: 0;
+  max-height: 45dvh;
+  padding: 18px 58px calc(16px + env(safe-area-inset-bottom)) 16px;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -8px 28px #0005;
+  animation: input-rise 200ms ease-out;
+}
+.conversation-drawer .drawer-handle { position: absolute; top: 6px; left: calc(50% - 18px); margin: 0; }
+.drawer-close { position: absolute; right: 6px; top: 18px; min-width: 44px; min-height: 46px; padding: 0; background: transparent; border: 0; font: 26px sans-serif; }
+.conversation-drawer input { min-width: 0; font-size: 16px; }
+.conversation-drawer .voice-hold { min-height: 54px; touch-action: none; user-select: none; }
+.app.drawer-open .scene .scene-subtitle { bottom: var(--subtitle-clearance, 16px) !important; }
+.app.drawer-open .conversation-trigger { visibility: hidden; }
+.app:fullscreen { max-width: none; width: 100%; height: 100%; overflow: auto; padding: 0; }
+.app:fullscreen > header, .app:fullscreen > .status-line { display: none; }
+.app:fullscreen .scene { height: 100dvh; min-height: 0; margin: 0; }
+.app .conversation-trigger, .app .immersive-trigger { min-width: 44px; min-height: 44px; }
+.app .scene .conversation-trigger,
+.app.landscape:not(.immersive) .scene .conversation-trigger {
+  bottom: max(12px, env(safe-area-inset-bottom));
+}
+.app:not(.drawer-open) .scene .scene-subtitle {
+  bottom: calc(68px + env(safe-area-inset-bottom));
+}
+@media (orientation: landscape) {
+  .app .conversation-drawer.bottom { width: min(600px, calc(100% - 48px)); padding-top: 14px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .drawer-close { top: 14px; }
+}
+@keyframes input-rise { from { opacity: 0; translate: 0 100%; } to { opacity: 1; translate: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .app .conversation-drawer.bottom { animation: none; } }
+.speech-recovery { display: inline-flex; gap: 8px; margin-left: 12px; }
+.speech-recovery button { border: 1px solid rgba(238, 181, 104, .55); background: transparent; color: #f5d39b; padding: 5px 9px; }
